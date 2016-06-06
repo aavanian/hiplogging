@@ -2,15 +2,19 @@
 """ Refactors hiplogging (https://github.com/invernizzi/hiplogging) to use
 HipChat's API v2 via HypChat (https://github.com/RidersDiscountCom/HypChat)
 """
+from functools import partial
 import logging
 from hypchat import HypChat
 
 
 class HipChatHandler(logging.Handler):
 
-    def __init__(self, access_token, room_name, endpoint='https://api.hipchat.com'):
+    def __init__(self, access_token, room_name, endpoint='https://api.hipchat.com', notification_only=False):
         logging.Handler.__init__(self)
-        self.room = HypChat(access_token, endpoint).get_room(room_name)
+        if notification_only:
+            self.notification = partial(HypChat(access_token, endpoint).send_notification, id_or_name=room_name)
+        else:
+            self.notification = partial(HypChat(access_token, endpoint).get_room(room_name).notification)
 
     def emit(self, record):
         if hasattr(record, "color"):
@@ -21,11 +25,12 @@ class HipChatHandler(logging.Handler):
             notify = bool(record.notify)
         else:
             notify = self.__notify_for_level(record.levelno)
-        self.room.notification(
-            message=self.format(record),
-            color=color,
-            notify=notify
-        )
+        kwargs = {
+            'message': self.format(record),
+            'color' : color,
+            'notify': notify
+        }
+        self.notification(**kwargs)
 
     def __color_for_level(self, levelno):
         if levelno > logging.WARNING:
